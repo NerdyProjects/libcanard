@@ -26,6 +26,7 @@
 
 #include "canard_internals.h"
 #include <string.h>
+#include "ch.h"
 
 
 #undef MIN
@@ -34,7 +35,7 @@
 #define MAX(a, b)   (((a) > (b)) ? (a) : (b))
 
 
-#define TRANSFER_TIMEOUT_USEC                       2000000
+#define TRANSFER_TIMEOUT                       TIME_US2I(2000000)
 
 #define TRANSFER_ID_BIT_LEN                         5U
 #define ANON_MSG_DATA_TYPE_ID_BIT_LEN               2U
@@ -248,7 +249,7 @@ void canardPopTxQueue(CanardInstance* ins)
     freeBlock(&ins->allocator, item);
 }
 
-void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint64_t timestamp_usec)
+void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint32_t timestamp)
 {
     const CanardTransferType transfer_type = extractTransferType(frame->id);
     const uint8_t destination_node_id = (transfer_type == CanardTransferTypeBroadcast) ?
@@ -314,8 +315,8 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
     CANARD_ASSERT(rx_state != NULL);    // All paths that lead to NULL should be terminated with return above
 
     // Resolving the state flags:
-    const bool not_initialized = rx_state->timestamp_usec == 0;
-    const bool tid_timed_out = (timestamp_usec - rx_state->timestamp_usec) > TRANSFER_TIMEOUT_USEC;
+    const bool not_initialized = rx_state->timestamp == 0;
+    const bool tid_timed_out = (timestamp - rx_state->timestamp) > TRANSFER_TIMEOUT;
     const bool first_frame = IS_START_OF_TRANSFER(tail_byte);
     const bool not_previous_tid =
         computeTransferIDForwardDistance((uint8_t) rx_state->transfer_id, TRANSFER_ID_FROM_TAIL_BYTE(tail_byte)) > 1;
@@ -339,9 +340,9 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
 
     if (IS_START_OF_TRANSFER(tail_byte) && IS_END_OF_TRANSFER(tail_byte)) // single frame transfer
     {
-        rx_state->timestamp_usec = timestamp_usec;
+        rx_state->timestamp = timestamp;
         CanardRxTransfer rx_transfer = {
-            .timestamp_usec = timestamp_usec,
+            .timestamp = timestamp,
             .payload_head = frame->data,
             .payload_len = (uint8_t)(frame->data_len - 1U),
             .data_type_id = data_type_id,
@@ -375,7 +376,7 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
         }
 
         // take off the crc and store the payload
-        rx_state->timestamp_usec = timestamp_usec;
+        rx_state->timestamp = timestamp;
         const int16_t ret = bufferBlockPushBytes(&ins->allocator, rx_state, frame->data + 2,
                                                  (uint8_t) (frame->data_len - 3));
         if (ret < 0)
@@ -444,7 +445,7 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
         }
 
         CanardRxTransfer rx_transfer = {
-            .timestamp_usec = timestamp_usec,
+            .timestamp = timestamp,
             .payload_head = rx_state->buffer_head,
             .payload_middle = rx_state->buffer_blocks,
             .payload_tail = (tail_offset >= frame_payload_size) ? NULL : (&frame->data[tail_offset]),
@@ -474,13 +475,13 @@ void canardHandleRxFrame(CanardInstance* ins, const CanardCANFrame* frame, uint6
     rx_state->next_toggle = rx_state->next_toggle ? 0 : 1;
 }
 
-void canardCleanupStaleTransfers(CanardInstance* ins, uint64_t current_time_usec)
+void canardCleanupStaleTransfers(CanardInstance* ins, uint32_t current_time)
 {
     CanardRxState* prev = ins->rx_states, * state = ins->rx_states;
 
     while (state != NULL)
     {
-        if ((current_time_usec - state->timestamp_usec) > TRANSFER_TIMEOUT_USEC)
+        if ((current_time - state->timestamp) > TRANSFER_TIMEOUT)
         {
             if (state == ins->rx_states)
             {

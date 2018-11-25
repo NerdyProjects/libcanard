@@ -31,6 +31,7 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <assert.h>
+#include "../util.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -221,7 +222,7 @@ struct CanardRxState
 
     CanardBufferBlock* buffer_blocks;
 
-    uint64_t timestamp_usec;
+    uint32_t timestamp;
 
     const uint32_t dtid_tt_snid_dnid;
 
@@ -267,7 +268,7 @@ struct CanardRxTransfer
     /**
      * Timestamp at which the first frame of this transfer was received.
      */
-    uint64_t timestamp_usec;
+    uint32_t timestamp;
 
     /**
      * Payload is scattered across three storages:
@@ -415,7 +416,7 @@ void canardPopTxQueue(CanardInstance* ins);
  */
 void canardHandleRxFrame(CanardInstance* ins,
                          const CanardCANFrame* frame,
-                         uint64_t timestamp_usec);
+                         uint32_t timestamp);
 
 /**
  * Traverses the list of transfers and removes those that were last updated more than timeout_usec microseconds ago.
@@ -423,7 +424,7 @@ void canardHandleRxFrame(CanardInstance* ins,
  * Also refer to the constant CANARD_RECOMMENDED_STALE_TRANSFER_CLEANUP_INTERVAL_USEC.
  */
 void canardCleanupStaleTransfers(CanardInstance* ins,
-                                 uint64_t current_time_usec);
+                                 uint32_t current_time);
 
 /**
  * This function can be used to extract values from received UAVCAN transfers. It decodes a scalar value -
